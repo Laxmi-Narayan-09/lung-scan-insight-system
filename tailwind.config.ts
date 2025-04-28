@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -61,6 +62,23 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
+				},
+				medical: {
+					100: '#E3F2FD',
+					200: '#BBDEFB',
+					300: '#90CAF9',
+					400: '#64B5F6',
+					500: '#42A5F5',
+					600: '#2196F3',
+					700: '#1E88E5',
+					800: '#1976D2',
+					900: '#1565C0'
+				},
+				alert: {
+					warning: '#FFA726',
+					danger: '#EF5350',
+					success: '#66BB6A',
+					info: '#29B6F6'
 				}
 			},
 			borderRadius: {
@@ -84,11 +102,27 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'pulse-glow': {
+					'0%, 100%': { 
+						opacity: '1',
+						boxShadow: '0 0 20px rgba(66, 165, 245, 0.8)'
+					},
+					'50%': { 
+						opacity: '0.7',
+						boxShadow: '0 0 10px rgba(66, 165, 245, 0.3)'
+					}
+				},
+				'spin-slow': {
+					'0%': { transform: 'rotate(0deg)' },
+					'100%': { transform: 'rotate(360deg)' }
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
+				'spin-slow': 'spin-slow 3s linear infinite'
 			}
 		}
 	},
