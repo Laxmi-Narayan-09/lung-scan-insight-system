@@ -3,172 +3,91 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import Header from '@/components/Header';
-import ImageUploader from '@/components/ImageUploader';
-import ClinicalDataForm from '@/components/ClinicalDataForm';
-import ImageProcessor from '@/components/ImageProcessor';
-import PredictionResults from '@/components/PredictionResults';
-import ProcessingLoader from '@/components/ProcessingLoader';
-import { BrainCircuit, Microscope } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-import type { ClinicalData } from '@/components/ClinicalDataForm';
-import { 
-  processImage, 
-  predictFromClinicalData,
-  predictFromImage,
-  combineModelPredictions,
-  generateReport
-} from '@/utils/mockProcessing';
+import VirtualModel from '@/components/VirtualModel';
+import ClothingOptions from '@/components/ClothingOptions';
+import HairstyleOptions from '@/components/HairstyleOptions';
+import ARView from '@/components/ARView';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Camera, Shirt, Scissors } from 'lucide-react';
+
+// Define types for our application
+type ClothingItem = {
+  id: string;
+  name: string;
+  imageUrl: string;
+  category: 'tops' | 'bottoms' | 'dresses' | 'accessories';
+  color: string;
+};
+
+type Hairstyle = {
+  id: string;
+  name: string;
+  imageUrl: string;
+  type: 'short' | 'medium' | 'long';
+  gender: 'male' | 'female' | 'unisex';
+};
 
 const Index = () => {
   const { toast } = useToast();
   
-  // State for image processing
-  const [originalImage, setOriginalImage] = useState<string | null>(null);
-  const [processedImage, setProcessedImage] = useState<string | null>(null);
-  const [currentFile, setCurrentFile] = useState<File | null>(null);
+  // State for virtual model
+  const [selectedAvatar, setSelectedAvatar] = useState<string>('/avatar-placeholder.jpg');
   
-  // State for clinical data
-  const [clinicalData, setClinicalData] = useState<ClinicalData>({
-    age: 0,
-    gender: 0,
-    smokingHistory: 0,
-    chronicCough: 0,
-    shortnessOfBreath: 0,
-    chestPain: 0
-  });
+  // State for outfit selection
+  const [selectedClothing, setSelectedClothing] = useState<ClothingItem | null>(null);
+  const [selectedHairstyle, setSelectedHairstyle] = useState<Hairstyle | null>(null);
   
-  // Processing state
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [processingStage, setProcessingStage] = useState<string>('');
-  const [processingAlgorithm, setProcessingAlgorithm] = useState<string>('');
-  
-  // Results state
-  const [predictionResults, setPredictionResults] = useState<{
-    prediction: string | null;
-    confidence: number | null;
-    imageModelConfidence: number | null;
-    clinicalModelConfidence: number | null;
-  }>({
-    prediction: null,
-    confidence: null,
-    imageModelConfidence: null,
-    clinicalModelConfidence: null
-  });
+  // State for AR view
+  const [arModeActive, setArModeActive] = useState<boolean>(false);
 
-  const handleImageUpload = (file: File, imageUrl: string) => {
-    setOriginalImage(imageUrl);
-    setProcessedImage(null); // Reset processed image when new image is uploaded
-    setCurrentFile(file);
-    
-    // Reset prediction results when new image is uploaded
-    setPredictionResults({
-      prediction: null,
-      confidence: null,
-      imageModelConfidence: null,
-      clinicalModelConfidence: null
+  // Mock clothing data
+  const clothingItems: ClothingItem[] = [
+    { id: '1', name: 'White T-Shirt', imageUrl: '/t-shirt-white.jpg', category: 'tops', color: 'white' },
+    { id: '2', name: 'Black Jeans', imageUrl: '/jeans-black.jpg', category: 'bottoms', color: 'black' },
+    { id: '3', name: 'Blue Dress', imageUrl: '/dress-blue.jpg', category: 'dresses', color: 'blue' },
+    { id: '4', name: 'Red Scarf', imageUrl: '/scarf-red.jpg', category: 'accessories', color: 'red' },
+  ];
+
+  // Mock hairstyle data
+  const hairstyles: Hairstyle[] = [
+    { id: '1', name: 'Short Bob', imageUrl: '/hairstyle-bob.jpg', type: 'short', gender: 'female' },
+    { id: '2', name: 'Long Waves', imageUrl: '/hairstyle-waves.jpg', type: 'long', gender: 'female' },
+    { id: '3', name: 'Crew Cut', imageUrl: '/hairstyle-crew.jpg', type: 'short', gender: 'male' },
+    { id: '4', name: 'Medium Layered', imageUrl: '/hairstyle-layered.jpg', type: 'medium', gender: 'unisex' },
+  ];
+
+  const handleClothingSelect = (item: ClothingItem) => {
+    setSelectedClothing(item);
+    toast({
+      title: "Clothing Selected",
+      description: `You've selected the ${item.name}`,
     });
   };
 
-  const handleClinicalDataChange = (data: ClinicalData) => {
-    setClinicalData(data);
-  };
-
-  const validateData = (): boolean => {
-    if (!originalImage || !currentFile) {
-      toast({
-        title: "Image Required",
-        description: "Please upload a lung scan image to proceed.",
-        variant: "destructive"
-      });
-      return false;
-    }
-
-    if (clinicalData.age <= 0) {
-      toast({
-        title: "Invalid Age",
-        description: "Please enter a valid age.",
-        variant: "destructive"
-      });
-      return false;
-    }
-
-    return true;
-  };
-
-  const handleAnalyze = async () => {
-    if (!validateData()) return;
-    
-    try {
-      setIsProcessing(true);
-      
-      // Step 1: Process the image
-      setProcessingStage('Processing image');
-      setProcessingAlgorithm('Applying Geometric Mean Filter & K-means Clustering');
-      const processedImgUrl = await processImage(originalImage!);
-      setProcessedImage(processedImgUrl);
-      
-      // Step 2: Predict from clinical data
-      setProcessingStage('Analyzing clinical data');
-      setProcessingAlgorithm('Running Ensemble Model (RF, GB, XGBoost)');
-      const clinicalPrediction = await predictFromClinicalData(clinicalData);
-      
-      // Step 3: Predict from image
-      setProcessingStage('Analyzing image data');
-      setProcessingAlgorithm('Running ANN Model with sigmoid activation');
-      const imagePrediction = await predictFromImage(processedImgUrl);
-      
-      // Step 4: Combine predictions
-      setProcessingStage('Finalizing results');
-      setProcessingAlgorithm('Combining model predictions');
-      const combinedPrediction = combineModelPredictions(imagePrediction, clinicalPrediction);
-      
-      // Set results
-      setPredictionResults({
-        prediction: combinedPrediction.finalPrediction,
-        confidence: combinedPrediction.confidence,
-        imageModelConfidence: imagePrediction.confidence,
-        clinicalModelConfidence: clinicalPrediction.confidence
-      });
-      
-      // Complete processing
-      setIsProcessing(false);
-      
-      toast({
-        title: "Analysis Complete",
-        description: "Lung scan and clinical data have been analyzed.",
-      });
-      
-    } catch (error) {
-      console.error('Error during analysis:', error);
-      setIsProcessing(false);
-      
-      toast({
-        title: "Analysis Failed",
-        description: "An error occurred during analysis. Please try again.",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleSaveReport = () => {
-    if (!predictionResults.prediction) return;
-    
-    const report = generateReport(clinicalData, predictionResults);
-    
-    // Create a blob and download it
-    const blob = new Blob([report], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'lung-scan-report.txt';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
+  const handleHairstyleSelect = (style: Hairstyle) => {
+    setSelectedHairstyle(style);
     toast({
-      title: "Report Saved",
-      description: "The analysis report has been downloaded as a text file.",
+      title: "Hairstyle Selected",
+      description: `You've selected the ${style.name}`,
+    });
+  };
+
+  const toggleARMode = () => {
+    setArModeActive(!arModeActive);
+    
+    if (!arModeActive) {
+      toast({
+        title: "AR Mode Activated",
+        description: "Point your camera at a flat surface to place the virtual model",
+      });
+    }
+  };
+
+  const handleTakeSnapshot = () => {
+    toast({
+      title: "Snapshot Taken",
+      description: "Your styled look has been saved to your gallery",
     });
   };
 
@@ -178,98 +97,116 @@ const Index = () => {
       
       <main className="flex-1 container mx-auto py-6 px-4 sm:px-6 md:px-8">
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-medical-900">Lung Cancer Detection System</h2>
+          <h2 className="text-2xl font-bold text-indigo-900">Virtual Try-On Experience</h2>
           <p className="text-gray-600 mt-1">
-            Upload lung scans and enter clinical data for advanced cancer detection analysis
+            See how clothes and hairstyles look on you with our AR/VR technology
           </p>
         </div>
         
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column */}
+          {/* Left Column - Options */}
           <div className="space-y-6">
-            <ImageUploader onImageUpload={handleImageUpload} />
-            <ClinicalDataForm 
-              clinicalData={clinicalData} 
-              onChange={handleClinicalDataChange} 
-            />
+            <Tabs defaultValue="clothing">
+              <TabsList className="grid grid-cols-2 mb-4">
+                <TabsTrigger value="clothing">
+                  <Shirt className="mr-2 h-4 w-4" />
+                  Clothing
+                </TabsTrigger>
+                <TabsTrigger value="hairstyles">
+                  <Scissors className="mr-2 h-4 w-4" />
+                  Hairstyles
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="clothing" className="space-y-4">
+                <ClothingOptions 
+                  items={clothingItems} 
+                  onSelect={handleClothingSelect}
+                  selectedItem={selectedClothing}
+                />
+              </TabsContent>
+              
+              <TabsContent value="hairstyles" className="space-y-4">
+                <HairstyleOptions 
+                  styles={hairstyles}
+                  onSelect={handleHairstyleSelect}
+                  selectedStyle={selectedHairstyle}
+                />
+              </TabsContent>
+            </Tabs>
             
-            <div className="pt-4">
+            <div className="pt-4 flex flex-col space-y-3">
               <Button 
-                onClick={handleAnalyze} 
-                className="w-full bg-medical-700 hover:bg-medical-800 text-white"
-                disabled={isProcessing || !originalImage}
+                onClick={toggleARMode} 
+                className="w-full bg-indigo-700 hover:bg-indigo-800 text-white"
                 size="lg"
               >
-                {isProcessing ? (
-                  <>
-                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <Microscope className="mr-2 h-4 w-4" />
-                    Analyze Lung Scan
-                  </>
-                )}
+                <Camera className="mr-2 h-4 w-4" />
+                {arModeActive ? "Exit AR Mode" : "Try in AR Mode"}
+              </Button>
+              
+              <Button 
+                onClick={handleTakeSnapshot}
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                size="lg"
+                disabled={!selectedClothing && !selectedHairstyle}
+              >
+                Take Snapshot
               </Button>
             </div>
           </div>
           
-          {/* Middle Column */}
-          <div className="space-y-6">
-            {isProcessing ? (
-              <ProcessingLoader 
-                text={processingStage} 
-                algorithm={processingAlgorithm} 
+          {/* Middle Column - Virtual Model */}
+          <div className="lg:col-span-2 bg-white rounded-lg shadow-md p-4 flex items-center justify-center">
+            {arModeActive ? (
+              <ARView 
+                clothing={selectedClothing}
+                hairstyle={selectedHairstyle}
               />
             ) : (
-              <ImageProcessor 
-                originalImage={originalImage} 
-                processedImage={processedImage} 
+              <VirtualModel 
+                avatarUrl={selectedAvatar}
+                clothing={selectedClothing}
+                hairstyle={selectedHairstyle}
               />
             )}
           </div>
-          
-          {/* Right Column */}
-          <div className="space-y-6">
-            <PredictionResults 
-              isLoading={isProcessing}
-              result={predictionResults}
-              onSaveReport={handleSaveReport}
-            />
-            
-            {!isProcessing && processedImage && (
-              <div className="bg-white p-5 rounded-lg shadow border border-gray-100">
-                <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-                  <BrainCircuit className="h-4 w-4 mr-2 text-medical-700" />
-                  Algorithm Information
-                </h3>
-                <Separator className="mb-4" />
-                <div className="space-y-3 text-xs text-gray-600">
-                  <div>
-                    <span className="font-medium text-gray-800">Image Processing:</span> Geometric Mean Filter, K-means Clustering
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-800">Image Classification:</span> ANN with Sigmoid Activation
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-800">Clinical Model:</span> Ensemble (RF, GB, XGBoost)
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-800">Data Balancing:</span> SMOTE for Synthetic Sampling
-                  </div>
-                </div>
+        </div>
+        
+        <div className="mt-8 bg-white p-5 rounded-lg shadow border border-gray-100">
+          <h3 className="text-lg font-medium text-indigo-900 mb-3">How It Works</h3>
+          <Separator className="mb-4" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+            <div className="text-center">
+              <div className="bg-purple-100 text-purple-800 mx-auto rounded-full h-12 w-12 flex items-center justify-center mb-3">
+                <span className="font-bold">1</span>
               </div>
-            )}
+              <h4 className="font-medium mb-2">Select Items</h4>
+              <p className="text-gray-600">Choose clothes and hairstyles from our library to try on virtually</p>
+            </div>
+            <div className="text-center">
+              <div className="bg-indigo-100 text-indigo-800 mx-auto rounded-full h-12 w-12 flex items-center justify-center mb-3">
+                <span className="font-bold">2</span>
+              </div>
+              <h4 className="font-medium mb-2">Preview in 3D</h4>
+              <p className="text-gray-600">See a realistic 3D representation of how items look on you</p>
+            </div>
+            <div className="text-center">
+              <div className="bg-violet-100 text-violet-800 mx-auto rounded-full h-12 w-12 flex items-center justify-center mb-3">
+                <span className="font-bold">3</span>
+              </div>
+              <h4 className="font-medium mb-2">Try in AR</h4>
+              <p className="text-gray-600">Use AR mode to see yourself wearing the items in real-world</p>
+            </div>
           </div>
         </div>
       </main>
       
-      <footer className="bg-medical-800 text-white py-4 mt-12">
+      <footer className="bg-gradient-to-r from-purple-700 to-indigo-800 text-white py-4 mt-12">
         <div className="container mx-auto px-4 text-center text-sm">
-          <p>Lung Scan Insight System © 2025 - Advanced Cancer Detection Platform</p>
-          <p className="text-xs mt-1 text-medical-300">
-            For educational and research purposes only. Not for diagnostic use.
+          <p>VirtualFit © 2025 - AR/VR Virtual Try-On Experience</p>
+          <p className="text-xs mt-1 text-indigo-200">
+            Powered by advanced augmented reality and 3D technology
           </p>
         </div>
       </footer>
