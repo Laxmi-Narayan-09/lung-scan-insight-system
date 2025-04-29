@@ -1,7 +1,8 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Share2, RotateCw, CameraOff, View } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
 
 interface ARViewProps {
   clothing: {
@@ -24,13 +25,58 @@ const ARView: React.FC<ARViewProps> = ({ clothing, hairstyle }) => {
   const [cameraActive, setCameraActive] = useState(false);
   const [rotationAngle, setRotationAngle] = useState(0);
   const [is360ViewActive, setIs360ViewActive] = useState(false);
+  const [cameraPermissionGranted, setCameraPermissionGranted] = useState<boolean | null>(null);
+  const [flashEffect, setFlashEffect] = useState(false);
+  
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
   const rotationRef = useRef<number>(0);
   const animationRef = useRef<number | null>(null);
+  
+  const { toast } = useToast();
+
+  // Initialize camera
+  const initCamera = async () => {
+    try {
+      const constraints = {
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: "user"
+        }
+      };
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        mediaStreamRef.current = stream;
+        setCameraPermissionGranted(true);
+      }
+    } catch (error) {
+      console.error("Error accessing camera:", error);
+      setCameraPermissionGranted(false);
+      toast({
+        title: "Camera Access Failed",
+        description: "Please allow camera access to use AR features",
+        variant: "destructive"
+      });
+    }
+  };
 
   // Toggle camera on/off
-  const toggleCamera = () => {
-    setCameraActive(!cameraActive);
-    if (is360ViewActive) {
+  const toggleCamera = async () => {
+    if (!cameraActive) {
+      await initCamera();
+      setCameraActive(true);
+    } else {
+      // Stop camera stream
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+      }
+      setCameraActive(false);
       stopRotation();
     }
   };
@@ -68,28 +114,110 @@ const ARView: React.FC<ARViewProps> = ({ clothing, hairstyle }) => {
     }
   };
 
-  // Take a snapshot (in a real app, this would save the current view)
+  // Take a snapshot
   const takeSnapshot = () => {
-    console.log('Snapshot taken');
-    // In a real app, this would capture the current frame
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    
+    // Set canvas dimensions to match video
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Draw the current frame from video to canvas
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      // Draw the video frame
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Overlay items if needed
+      if (clothing || hairstyle) {
+        // This is where we would add AR overlay logic in a production app
+        // For now, we'll just add text to indicate the presence of virtual items
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.font = '20px Arial';
+        let y = 30;
+        
+        if (clothing) {
+          ctx.fillText(`Wearing: ${clothing.name}`, 20, y);
+          y += 30;
+        }
+        
+        if (hairstyle) {
+          ctx.fillText(`Hairstyle: ${hairstyle.name}`, 20, y);
+        }
+      }
+      
+      // Create camera flash effect
+      setFlashEffect(true);
+      setTimeout(() => setFlashEffect(false), 300);
+      
+      // In a production app, we could save this image or share it
+      // For now, just log it
+      console.log('Snapshot taken');
+      
+      toast({
+        title: "Snapshot Taken",
+        description: "Your AR look has been captured",
+      });
+    }
   };
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      // Stop any active media stream
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      
+      // Cancel any animation frames
+      if (animationRef.current !== null) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="w-full h-full min-h-[400px] flex flex-col items-center justify-center relative">
       <div className="bg-black bg-opacity-70 text-white p-4 rounded-lg text-center mb-8">
         {cameraActive ? (
-          <div className="relative">
+          <div className="relative camera-active-container">
             <div 
               className="relative overflow-hidden rounded-lg h-[300px] w-full max-w-[400px] bg-gray-800 flex items-center justify-center"
               style={{ transform: `rotateY(${rotationAngle}deg)`, transition: !is360ViewActive ? 'transform 0.3s ease-out' : 'none' }}
             >
-              {/* This would be a real camera feed in a production app */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <p className="text-gray-400">Camera Feed Simulation</p>
-              </div>
+              {/* Real camera feed */}
+              <video 
+                ref={videoRef} 
+                autoPlay 
+                playsInline
+                muted 
+                className="h-full w-full object-cover"
+              />
+              
+              {/* Canvas for snapshot */}
+              <canvas 
+                ref={canvasRef} 
+                className="hidden" // Hide canvas but keep it in the DOM for snapshot functionality
+              />
+              
+              {/* Camera permission denied message */}
+              {cameraPermissionGranted === false && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-80">
+                  <div className="text-center p-4">
+                    <CameraOff className="h-12 w-12 mx-auto mb-2 text-red-500" />
+                    <p className="text-red-400 font-medium">Camera access denied</p>
+                    <p className="text-gray-400 text-sm mt-2">
+                      Please allow camera access in your browser settings to use AR features
+                    </p>
+                  </div>
+                </div>
+              )}
               
               {/* Virtual items overlaid on camera feed */}
-              {(clothing || hairstyle) && (
+              {(clothing || hairstyle) && cameraPermissionGranted !== false && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   {clothing && (
                     <div className="absolute" style={{ opacity: 0.8 }}>
@@ -105,14 +233,31 @@ const ARView: React.FC<ARViewProps> = ({ clothing, hairstyle }) => {
                   )}
                 </div>
               )}
+              
+              {/* Flash effect when taking snapshot */}
+              {flashEffect && (
+                <div className="absolute inset-0 bg-white opacity-70 camera-flash"></div>
+              )}
             </div>
             
             {/* Camera controls */}
             <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex space-x-2">
-              <Button variant="outline" size="icon" className="bg-black bg-opacity-50 text-white border-gray-600 hover:bg-gray-800" onClick={takeSnapshot}>
+              <Button 
+                variant="outline" 
+                size="icon" 
+                className="bg-black bg-opacity-50 text-white border-gray-600 hover:bg-gray-800" 
+                onClick={takeSnapshot}
+                disabled={cameraPermissionGranted === false}
+              >
                 <Camera size={16} />
               </Button>
-              <Button variant="outline" size="icon" className="bg-black bg-opacity-50 text-white border-gray-600 hover:bg-gray-800" onClick={toggle360View}>
+              <Button 
+                variant="outline" 
+                size="icon" 
+                className="bg-black bg-opacity-50 text-white border-gray-600 hover:bg-gray-800" 
+                onClick={toggle360View}
+                disabled={cameraPermissionGranted === false}
+              >
                 <RotateCw size={16} className={is360ViewActive ? "animate-spin" : ""} />
               </Button>
               <Button variant="outline" size="icon" className="bg-black bg-opacity-50 text-white border-gray-600 hover:bg-gray-800" onClick={toggleCamera}>
