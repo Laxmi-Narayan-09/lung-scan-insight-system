@@ -1,8 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Share2, RotateCw, CameraOff, View } from 'lucide-react';
+import { Camera, Share2, RotateCw, CameraOff, View, Film, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface ARViewProps {
   clothing: {
@@ -21,14 +22,25 @@ interface ARViewProps {
   } | null;
 }
 
+// Define our pre-recorded videos data
+const preRecordedVideos = [
+  { id: 'video1', name: 'Casual Walk', src: 'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', type: 'casual' },
+  { id: 'video2', name: 'Studio Rotation', src: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4', type: 'studio' },
+  { id: 'video3', name: 'Outdoor Scene', src: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4', type: 'outdoor' },
+];
+
 const ARView: React.FC<ARViewProps> = ({ clothing, hairstyle }) => {
   const [cameraActive, setCameraActive] = useState(false);
   const [rotationAngle, setRotationAngle] = useState(0);
   const [is360ViewActive, setIs360ViewActive] = useState(false);
   const [cameraPermissionGranted, setCameraPermissionGranted] = useState<boolean | null>(null);
   const [flashEffect, setFlashEffect] = useState(false);
+  const [videoMode, setVideoMode] = useState<'camera' | 'prerecorded'>('camera');
+  const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
+  const [isMuted, setIsMuted] = useState(true);
   
   const videoRef = useRef<HTMLVideoElement>(null);
+  const prerecordedVideoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const rotationRef = useRef<number>(0);
@@ -67,9 +79,16 @@ const ARView: React.FC<ARViewProps> = ({ clothing, hairstyle }) => {
 
   // Toggle camera on/off
   const toggleCamera = async () => {
+    setVideoMode('camera');
+    
     if (!cameraActive) {
       await initCamera();
       setCameraActive(true);
+      
+      // Stop pre-recorded video if it's playing
+      if (prerecordedVideoRef.current) {
+        prerecordedVideoRef.current.pause();
+      }
     } else {
       // Stop camera stream
       if (mediaStreamRef.current) {
@@ -78,6 +97,37 @@ const ARView: React.FC<ARViewProps> = ({ clothing, hairstyle }) => {
       }
       setCameraActive(false);
       stopRotation();
+    }
+  };
+
+  // Switch to pre-recorded video mode
+  const switchToPrerecordedVideo = (videoId: string) => {
+    // Stop camera if it's active
+    if (cameraActive && mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
+    }
+    
+    setVideoMode('prerecorded');
+    setSelectedVideo(videoId);
+    setCameraActive(false);
+    
+    toast({
+      title: "Pre-recorded Video Mode",
+      description: `Playing ${preRecordedVideos.find(v => v.id === videoId)?.name || 'video'}`,
+    });
+  };
+
+  // Handle video selection change
+  const handleVideoChange = (value: string) => {
+    switchToPrerecordedVideo(value);
+  };
+
+  // Toggle video sound
+  const toggleSound = () => {
+    if (prerecordedVideoRef.current) {
+      prerecordedVideoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
     }
   };
 
@@ -116,20 +166,20 @@ const ARView: React.FC<ARViewProps> = ({ clothing, hairstyle }) => {
 
   // Take a snapshot
   const takeSnapshot = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    const sourceVideo = videoMode === 'camera' ? videoRef.current : prerecordedVideoRef.current;
+    if (!sourceVideo || !canvasRef.current) return;
     
-    const video = videoRef.current;
     const canvas = canvasRef.current;
     
     // Set canvas dimensions to match video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = sourceVideo.videoWidth;
+    canvas.height = sourceVideo.videoHeight;
     
     // Draw the current frame from video to canvas
     const ctx = canvas.getContext('2d');
     if (ctx) {
       // Draw the video frame
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(sourceVideo, 0, 0, canvas.width, canvas.height);
       
       // Overlay items if needed
       if (clothing || hairstyle) {
@@ -154,7 +204,6 @@ const ARView: React.FC<ARViewProps> = ({ clothing, hairstyle }) => {
       setTimeout(() => setFlashEffect(false), 300);
       
       // In a production app, we could save this image or share it
-      // For now, just log it
       console.log('Snapshot taken');
       
       toast({
@@ -181,21 +230,73 @@ const ARView: React.FC<ARViewProps> = ({ clothing, hairstyle }) => {
 
   return (
     <div className="w-full h-full min-h-[400px] flex flex-col items-center justify-center relative">
-      <div className="bg-black bg-opacity-70 text-white p-4 rounded-lg text-center mb-8">
-        {cameraActive ? (
+      <div className="bg-black bg-opacity-70 text-white p-4 rounded-lg text-center mb-8 w-full max-w-[600px]">
+        {/* Video Mode Selection */}
+        <div className="flex justify-between items-center mb-4">
+          <Button 
+            variant={videoMode === 'camera' ? "default" : "outline"} 
+            size="sm" 
+            onClick={toggleCamera}
+            className={videoMode === 'camera' ? "bg-indigo-600" : "border-indigo-600 text-indigo-600"}
+          >
+            <Camera size={16} className="mr-1" />
+            Live Camera
+          </Button>
+          
+          <div className="flex-1 mx-2">
+            <Select onValueChange={handleVideoChange} value={selectedVideo || ''}>
+              <SelectTrigger className={`${videoMode === 'prerecorded' ? "border-indigo-600" : "border-gray-600"} bg-black bg-opacity-50`}>
+                <SelectValue placeholder="Select a video" />
+              </SelectTrigger>
+              <SelectContent>
+                {preRecordedVideos.map(video => (
+                  <SelectItem key={video.id} value={video.id}>{video.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {videoMode === 'prerecorded' && selectedVideo && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSound}
+              className="text-white"
+            >
+              {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+            </Button>
+          )}
+        </div>
+        
+        {(videoMode === 'camera' && cameraActive) || (videoMode === 'prerecorded' && selectedVideo) ? (
           <div className="relative camera-active-container">
             <div 
-              className="relative overflow-hidden rounded-lg h-[300px] w-full max-w-[400px] bg-gray-800 flex items-center justify-center"
+              className="relative overflow-hidden rounded-lg h-[300px] w-full max-w-[400px] mx-auto bg-gray-800 flex items-center justify-center"
               style={{ transform: `rotateY(${rotationAngle}deg)`, transition: !is360ViewActive ? 'transform 0.3s ease-out' : 'none' }}
             >
               {/* Real camera feed */}
-              <video 
-                ref={videoRef} 
-                autoPlay 
-                playsInline
-                muted 
-                className="h-full w-full object-cover"
-              />
+              {videoMode === 'camera' && (
+                <video 
+                  ref={videoRef} 
+                  autoPlay 
+                  playsInline
+                  muted 
+                  className={`h-full w-full object-cover ${videoMode !== 'camera' ? 'hidden' : ''}`}
+                />
+              )}
+              
+              {/* Pre-recorded video */}
+              {videoMode === 'prerecorded' && selectedVideo && (
+                <video 
+                  ref={prerecordedVideoRef} 
+                  src={preRecordedVideos.find(v => v.id === selectedVideo)?.src}
+                  autoPlay 
+                  loop
+                  playsInline
+                  muted={isMuted}
+                  className={`h-full w-full object-cover ${videoMode !== 'prerecorded' ? 'hidden' : ''}`}
+                />
+              )}
               
               {/* Canvas for snapshot */}
               <canvas 
@@ -204,7 +305,7 @@ const ARView: React.FC<ARViewProps> = ({ clothing, hairstyle }) => {
               />
               
               {/* Camera permission denied message */}
-              {cameraPermissionGranted === false && (
+              {videoMode === 'camera' && cameraPermissionGranted === false && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-80">
                   <div className="text-center p-4">
                     <CameraOff className="h-12 w-12 mx-auto mb-2 text-red-500" />
@@ -216,8 +317,8 @@ const ARView: React.FC<ARViewProps> = ({ clothing, hairstyle }) => {
                 </div>
               )}
               
-              {/* Virtual items overlaid on camera feed */}
-              {(clothing || hairstyle) && cameraPermissionGranted !== false && (
+              {/* Virtual items overlaid on video */}
+              {(clothing || hairstyle) && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   {clothing && (
                     <div className="absolute" style={{ opacity: 0.8 }}>
@@ -240,14 +341,13 @@ const ARView: React.FC<ARViewProps> = ({ clothing, hairstyle }) => {
               )}
             </div>
             
-            {/* Camera controls */}
+            {/* Video controls */}
             <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex space-x-2">
               <Button 
                 variant="outline" 
                 size="icon" 
                 className="bg-black bg-opacity-50 text-white border-gray-600 hover:bg-gray-800" 
                 onClick={takeSnapshot}
-                disabled={cameraPermissionGranted === false}
               >
                 <Camera size={16} />
               </Button>
@@ -256,28 +356,64 @@ const ARView: React.FC<ARViewProps> = ({ clothing, hairstyle }) => {
                 size="icon" 
                 className="bg-black bg-opacity-50 text-white border-gray-600 hover:bg-gray-800" 
                 onClick={toggle360View}
-                disabled={cameraPermissionGranted === false}
               >
                 <RotateCw size={16} className={is360ViewActive ? "animate-spin" : ""} />
               </Button>
-              <Button variant="outline" size="icon" className="bg-black bg-opacity-50 text-white border-gray-600 hover:bg-gray-800" onClick={toggleCamera}>
+              <Button 
+                variant="outline" 
+                size="icon" 
+                className="bg-black bg-opacity-50 text-white border-gray-600 hover:bg-gray-800" 
+                onClick={() => {
+                  if (videoMode === 'camera') {
+                    toggleCamera();
+                  } else {
+                    setSelectedVideo(null);
+                    setVideoMode('camera');
+                    // Pause the pre-recorded video
+                    if (prerecordedVideoRef.current) {
+                      prerecordedVideoRef.current.pause();
+                    }
+                  }
+                }}
+              >
                 <CameraOff size={16} />
               </Button>
             </div>
           </div>
         ) : (
           <>
-            <Camera className="h-10 w-10 mx-auto mb-2" />
-            <h3 className="text-lg font-medium">AR Mode</h3>
-            <p className="text-sm opacity-80 mt-1">
-              Click the button below to activate the camera and see items in AR
+            <div className="flex justify-center mb-4">
+              <Film className="h-10 w-10 mx-auto" />
+            </div>
+            <h3 className="text-lg font-medium">Video Preview Mode</h3>
+            <p className="text-sm opacity-80 mt-1 mb-4">
+              {videoMode === 'camera' 
+                ? "Click the button below to activate the camera and see items in AR"
+                : "Select a pre-recorded video to see how items look in motion"
+              }
             </p>
-            <Button 
-              className="mt-4 bg-indigo-600 hover:bg-indigo-700"
-              onClick={toggleCamera}
-            >
-              Start Camera
-            </Button>
+            
+            {videoMode === 'camera' ? (
+              <Button 
+                className="bg-indigo-600 hover:bg-indigo-700"
+                onClick={toggleCamera}
+              >
+                Start Camera
+              </Button>
+            ) : (
+              <div className="flex flex-col space-y-2">
+                <Select onValueChange={handleVideoChange}>
+                  <SelectTrigger className="border-gray-600 bg-black bg-opacity-50 w-full">
+                    <SelectValue placeholder="Select a video" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {preRecordedVideos.map(video => (
+                      <SelectItem key={video.id} value={video.id}>{video.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -286,7 +422,10 @@ const ARView: React.FC<ARViewProps> = ({ clothing, hairstyle }) => {
       <div className="absolute bottom-4 left-0 right-0 px-4">
         <div className="bg-black bg-opacity-70 text-white p-3 rounded-lg text-sm">
           <div className="flex justify-between items-center mb-2">
-            <span className="font-medium">Virtual Try-On</span>
+            <span className="font-medium">
+              {videoMode === 'camera' ? 'Camera Mode' : 'Pre-recorded Video'}
+              {videoMode === 'prerecorded' && selectedVideo && `: ${preRecordedVideos.find(v => v.id === selectedVideo)?.name}`}
+            </span>
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-white">
               <Share2 size={16} />
             </Button>
